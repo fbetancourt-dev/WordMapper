@@ -38,14 +38,14 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                     if debug:
                         print(f"Updated last SAD ID: {last_sad_id}")
 
-                # Detect insertions (w:ins) and deletions (w:del)
+                # Detect insertions and deletions
                 insertions = para.xpath(".//w:ins", namespaces=namespaces)
                 deletions = para.xpath(".//w:del", namespaces=namespaces)
 
                 inserted_srs = set()
                 deleted_srs = set()
 
-                # Process insertions
+                # Process insertions recursively inside Covers section
                 for ins in insertions:
                     ins_text = "".join(
                         ins.xpath(".//w:t/text()", namespaces=namespaces)
@@ -58,7 +58,7 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                         if debug:
                             print(f"Inserted in Covers: {srs} mapped to {sad_to_map}")
 
-                # Process deletions
+                # Process deletions recursively inside Covers section
                 for dele in deletions:
                     del_text = "".join(
                         dele.xpath(".//w:t/text()", namespaces=namespaces)
@@ -70,6 +70,24 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                         changes.append(f"{srs} removed from {sad_to_map}")
                         if debug:
                             print(f"Deleted in Covers: {srs} removed from {sad_to_map}")
+
+                # If Covers contains nested insertions, extract them correctly
+                if "Covers:" in para_text:
+                    srs_matches = re.findall(r"SRS-\d+", para_text)
+                    for srs_id in srs_matches:
+                        sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
+                        if srs_id in inserted_srs:
+                            changes.append(f"{srs_id} mapped to {sad_to_map}")
+                            if debug:
+                                print(
+                                    f"Covers section (Inserted): {srs_id} mapped to {sad_to_map}"
+                                )
+                        elif srs_id in deleted_srs:
+                            changes.append(f"{srs_id} removed from {sad_to_map}")
+                            if debug:
+                                print(
+                                    f"Covers section (Deleted): {srs_id} removed from {sad_to_map}"
+                                )
 
     return changes
 
