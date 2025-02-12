@@ -5,7 +5,7 @@ import re
 
 def extract_tracked_changes_from_docx(file_path, debug=False):
     changes = []
-    sad_ids = []  # Store all SAD IDs encountered
+    last_sad_id = None  # Store the most recent SAD ID found
 
     if debug:
         print(f"Opening document: {file_path}")
@@ -31,38 +31,45 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                 if debug:
                     print(f"Processing paragraph: {para_text}")
 
-                # Check if the paragraph contains an SAD ID and store it
+                # Check if the paragraph contains an SAD ID and update the last found SAD ID
                 sad_matches = re.findall(r"SAD-\d+", para_text)
                 if sad_matches:
-                    sad_ids.extend(sad_matches)
+                    last_sad_id = sad_matches[-1]  # Always retain the last SAD ID found
                     if debug:
-                        print(f"Found SAD IDs: {sad_matches}")
+                        print(f"Updated last SAD ID: {last_sad_id}")
 
                 # Detect insertions (w:ins) and deletions (w:del)
-                insertions = para.xpath(".//w:ins//w:t", namespaces=namespaces)
+                insertions = para.xpath(".//w:ins", namespaces=namespaces)
                 deletions = para.xpath(".//w:del", namespaces=namespaces)
+
+                inserted_srs = set()
+                deleted_srs = set()
 
                 # Process insertions
                 for ins in insertions:
-                    added_text = ins.text.strip()
-                    if added_text.startswith("SRS-"):
-                        closest_sad = sad_ids[-1] if sad_ids else "Unknown SAD"
-                        changes.append(f"{added_text} mapped to {closest_sad}")
+                    ins_text = "".join(
+                        ins.xpath(".//w:t/text()", namespaces=namespaces)
+                    ).strip()
+                    srs_matches = re.findall(r"SRS-\d+", ins_text)
+                    for srs in srs_matches:
+                        inserted_srs.add(srs)
+                        sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
+                        changes.append(f"{srs} mapped to {sad_to_map}")
                         if debug:
-                            print(f"Inserted: {added_text} mapped to {closest_sad}")
+                            print(f"Inserted in Covers: {srs} mapped to {sad_to_map}")
 
                 # Process deletions
                 for dele in deletions:
-                    deleted_texts = dele.xpath(".//w:t", namespaces=namespaces)
-                    for deleted_text in deleted_texts:
-                        removed_text = deleted_text.text.strip()
-                        if removed_text.startswith("SRS-"):
-                            closest_sad = sad_ids[-1] if sad_ids else "Unknown SAD"
-                            changes.append(f"{removed_text} removed from {closest_sad}")
-                            if debug:
-                                print(
-                                    f"Deleted: {removed_text} removed from {closest_sad}"
-                                )
+                    del_text = "".join(
+                        dele.xpath(".//w:t/text()", namespaces=namespaces)
+                    ).strip()
+                    srs_matches = re.findall(r"SRS-\d+", del_text)
+                    for srs in srs_matches:
+                        deleted_srs.add(srs)
+                        sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
+                        changes.append(f"{srs} removed from {sad_to_map}")
+                        if debug:
+                            print(f"Deleted in Covers: {srs} removed from {sad_to_map}")
 
     return changes
 
