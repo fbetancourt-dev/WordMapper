@@ -75,47 +75,29 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
 
                 # Ensure nested changes inside Covers section are correctly extracted
                 if "Covers:" in para_text:
-                    for ins in insertions:
-                        ins_text = "".join(
-                            ins.xpath(".//w:t/text()", namespaces=namespaces)
-                        ).strip()
-                        srs_matches = re.findall(r"SRS-\d+", ins_text)
-                        for srs in srs_matches:
-                            sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
+                    all_srs_matches = re.findall(r"SRS-\d+", para_text)
+                    for srs in all_srs_matches:
+                        sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
+                        if srs in inserted_srs:
                             changes.append(f"{srs} mapped to {sad_to_map}")
                             if debug:
                                 print(
                                     f"Covers section (Inserted): {srs} mapped to {sad_to_map}"
                                 )
-                    for dele in deletions:
-                        del_text = "".join(
-                            dele.xpath(
-                                ".//w:t/text() | .//w:delText/text()",
-                                namespaces=namespaces,
-                            )
-                        ).strip()
-                        srs_matches = re.findall(r"SRS-\d+", del_text)
-                        for srs in srs_matches:
-                            sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
+                        elif srs in deleted_srs:
                             changes.append(f"{srs} removed from {sad_to_map}")
                             if debug:
                                 print(
                                     f"Covers section (Deleted): {srs} removed from {sad_to_map}"
                                 )
-
-                # Extra pass: Find deletions across the entire document (handles missing cases like SRS-8220)
-                deleted_texts = tree.xpath(
-                    "//w:del//w:delText/text()", namespaces=namespaces
-                )
-                for del_text in deleted_texts:
-                    srs_matches = re.findall(r"SRS-\d+", del_text)
-                    for srs in srs_matches:
-                        sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
-                        changes.append(f"{srs} removed from {sad_to_map}")
-                        if debug:
-                            print(
-                                f"Global Deletion Found: {srs} removed from {sad_to_map}"
-                            )
+                        else:
+                            changes.append(
+                                f"{srs} mapped to {sad_to_map}"
+                            )  # Catch missed insertions
+                            if debug:
+                                print(
+                                    f"Covers section (Extra Inserted Check): {srs} mapped to {sad_to_map}"
+                                )
 
     return changes
 
