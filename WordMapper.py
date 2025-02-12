@@ -3,9 +3,12 @@ from lxml import etree
 import re
 
 
-def extract_tracked_changes_from_docx(file_path):
+def extract_tracked_changes_from_docx(file_path, debug=False):
     changes = []
     sad_ids = []  # Store all SAD IDs encountered
+
+    if debug:
+        print(f"Opening document: {file_path}")
 
     # Open the .docx file as a zip archive
     with zipfile.ZipFile(file_path) as docx_zip:
@@ -25,11 +28,15 @@ def extract_tracked_changes_from_docx(file_path):
                 para_text = "".join(
                     para.xpath(".//w:t/text()", namespaces=namespaces)
                 ).strip()
+                if debug:
+                    print(f"Processing paragraph: {para_text}")
 
                 # Check if the paragraph contains an SAD ID and store it
                 sad_matches = re.findall(r"SAD-\d+", para_text)
                 if sad_matches:
                     sad_ids.extend(sad_matches)
+                    if debug:
+                        print(f"Found SAD IDs: {sad_matches}")
 
                 # Detect insertions (w:ins) and deletions (w:del)
                 insertions = para.xpath(".//w:ins//w:t", namespaces=namespaces)
@@ -41,6 +48,8 @@ def extract_tracked_changes_from_docx(file_path):
                     if added_text.startswith("SRS-"):
                         closest_sad = sad_ids[-1] if sad_ids else "Unknown SAD"
                         changes.append(f"{added_text} mapped to {closest_sad}")
+                        if debug:
+                            print(f"Inserted: {added_text} mapped to {closest_sad}")
 
                 # Process deletions
                 for dele in deletions:
@@ -50,13 +59,18 @@ def extract_tracked_changes_from_docx(file_path):
                         if removed_text.startswith("SRS-"):
                             closest_sad = sad_ids[-1] if sad_ids else "Unknown SAD"
                             changes.append(f"{removed_text} removed from {closest_sad}")
+                            if debug:
+                                print(
+                                    f"Deleted: {removed_text} removed from {closest_sad}"
+                                )
 
     return changes
 
 
 def main():
-    file_path = "TE1605_R000570_SHS_SAD.docx"  # Replace with the actual file path
-    changes = extract_tracked_changes_from_docx(file_path)
+    file_path = "TE1605_R000570_SHS_SAD.docx"  # Ensure this is the correct file path
+    debug_mode = True  # Set to True for debugging output
+    changes = extract_tracked_changes_from_docx(file_path, debug=debug_mode)
 
     # Display the changes
     for change in changes:
