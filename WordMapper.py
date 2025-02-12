@@ -58,10 +58,12 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                         if debug:
                             print(f"Inserted in Covers: {srs} mapped to {sad_to_map}")
 
-                # Process deletions recursively inside Covers section
+                # Process deletions recursively inside Covers section, including nested <w:delText>
                 for dele in deletions:
                     del_text = "".join(
-                        dele.xpath(".//w:t/text()", namespaces=namespaces)
+                        dele.xpath(
+                            ".//w:t/text() | .//w:delText/text()", namespaces=namespaces
+                        )
                     ).strip()
                     srs_matches = re.findall(r"SRS-\d+", del_text)
                     for srs in srs_matches:
@@ -71,23 +73,49 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                         if debug:
                             print(f"Deleted in Covers: {srs} removed from {sad_to_map}")
 
-                # If Covers contains nested insertions, extract them correctly
+                # Ensure nested changes inside Covers section are correctly extracted
                 if "Covers:" in para_text:
-                    srs_matches = re.findall(r"SRS-\d+", para_text)
-                    for srs_id in srs_matches:
+                    for ins in insertions:
+                        ins_text = "".join(
+                            ins.xpath(".//w:t/text()", namespaces=namespaces)
+                        ).strip()
+                        srs_matches = re.findall(r"SRS-\d+", ins_text)
+                        for srs in srs_matches:
+                            sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
+                            changes.append(f"{srs} mapped to {sad_to_map}")
+                            if debug:
+                                print(
+                                    f"Covers section (Inserted): {srs} mapped to {sad_to_map}"
+                                )
+                    for dele in deletions:
+                        del_text = "".join(
+                            dele.xpath(
+                                ".//w:t/text() | .//w:delText/text()",
+                                namespaces=namespaces,
+                            )
+                        ).strip()
+                        srs_matches = re.findall(r"SRS-\d+", del_text)
+                        for srs in srs_matches:
+                            sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
+                            changes.append(f"{srs} removed from {sad_to_map}")
+                            if debug:
+                                print(
+                                    f"Covers section (Deleted): {srs} removed from {sad_to_map}"
+                                )
+
+                # Extra pass: Find deletions across the entire document (handles missing cases like SRS-8220)
+                deleted_texts = tree.xpath(
+                    "//w:del//w:delText/text()", namespaces=namespaces
+                )
+                for del_text in deleted_texts:
+                    srs_matches = re.findall(r"SRS-\d+", del_text)
+                    for srs in srs_matches:
                         sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
-                        if srs_id in inserted_srs:
-                            changes.append(f"{srs_id} mapped to {sad_to_map}")
-                            if debug:
-                                print(
-                                    f"Covers section (Inserted): {srs_id} mapped to {sad_to_map}"
-                                )
-                        elif srs_id in deleted_srs:
-                            changes.append(f"{srs_id} removed from {sad_to_map}")
-                            if debug:
-                                print(
-                                    f"Covers section (Deleted): {srs_id} removed from {sad_to_map}"
-                                )
+                        changes.append(f"{srs} removed from {sad_to_map}")
+                        if debug:
+                            print(
+                                f"Global Deletion Found: {srs} removed from {sad_to_map}"
+                            )
 
     return changes
 
