@@ -8,6 +8,7 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
     changes = []
     last_sad_id = None  # Store the most recent SAD ID found
     detected_srs_mappings = defaultdict(set)  # Store detected mappings grouped by SAD
+    detected_srs_removals = defaultdict(set)  # Store removed mappings grouped by SAD
     deleted_sad_sections = set()
     existing_sad_sections = set()  # To track SAD IDs that still exist
     unique_changes = set()  # To avoid duplicates
@@ -48,6 +49,15 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                 # Detect insertions and deletions
                 insertions = para.xpath(".//w:ins", namespaces=namespaces)
                 deletions = para.xpath(".//w:del", namespaces=namespaces)
+                covers_deleted = any(
+                    "Covers:"
+                    in "".join(
+                        dele.xpath(
+                            ".//w:t/text() | .//w:delText/text()", namespaces=namespaces
+                        )
+                    )
+                    for dele in deletions
+                )
 
                 inserted_srs = set()
                 deleted_srs = set()
@@ -64,7 +74,7 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                             if debug:
                                 print(f"Deleted SAD Section: {sad}")
 
-                # Process insertions recursively inside Covers section
+                # Process insertions inside Covers section
                 for ins in insertions:
                     ins_text = "".join(
                         ins.xpath(".//w:t/text()", namespaces=namespaces)
@@ -77,25 +87,37 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                         if debug:
                             print(f"Inserted in Covers: {srs} mapped to {sad_to_map}")
 
-                # Process deletions recursively inside Covers section, including nested <w:delText>
-                for dele in deletions:
-                    del_text = "".join(
-                        dele.xpath(
-                            ".//w:t/text() | .//w:delText/text()", namespaces=namespaces
-                        )
-                    ).strip()
-                    srs_matches = re.findall(r"SRS-\d+", del_text)
-                    for srs in srs_matches:
-                        deleted_srs.add(srs)
-                        sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
-                        changes.append(f"{srs} removed from {sad_to_map}")
-                        if debug:
-                            print(f"Deleted in Covers: {srs} removed from {sad_to_map}")
+                # Process deletions inside Covers section only if Covers was not fully removed
+                if not covers_deleted:
+                    for dele in deletions:
+                        del_text = "".join(
+                            dele.xpath(
+                                ".//w:t/text() | .//w:delText/text()",
+                                namespaces=namespaces,
+                            )
+                        ).strip()
+                        srs_matches = re.findall(r"SRS-\d+", del_text)
+                        for srs in srs_matches:
+                            deleted_srs.add(srs)
+                            sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
+                            if (
+                                sad_to_map in existing_sad_sections
+                            ):  # Ensure the SAD still exists
+                                detected_srs_removals[sad_to_map].add(srs)
+                                if debug:
+                                    print(
+                                        f"Deleted in Covers: {srs} removed from {sad_to_map}"
+                                    )
 
     # Format grouped mappings for output
     for sad_id, srs_set in detected_srs_mappings.items():
         grouped_srs = ", ".join(sorted(srs_set))
         changes.append(f"{grouped_srs} mapped to {sad_id}")
+
+    # Format grouped removals for output
+    for sad_id, srs_set in detected_srs_removals.items():
+        grouped_srs = ", ".join(sorted(srs_set))
+        changes.append(f"{grouped_srs} removed from {sad_id}")
 
     return changes
 
@@ -107,15 +129,7 @@ def main():
 
     # Display the changes, ensuring correct formatting
     formatted_changes = []
-    last_sad = None
     for change in changes:
-        if "mapped to" in change or "removed from" in change:
-            sad_id = change.split(" ")[-1]
-            if last_sad != sad_id:
-                formatted_changes.append(
-                    ""
-                )  # Add a line break between different SAD sections
-            last_sad = sad_id
         formatted_changes.append(change)
 
     for change in formatted_changes:
