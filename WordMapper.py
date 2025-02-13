@@ -6,8 +6,8 @@ import re
 def extract_tracked_changes_from_docx(file_path, debug=False):
     changes = []
     last_sad_id = None  # Store the most recent SAD ID found
-    all_detected_srs = set()
-    previous_srs_set = set()
+    detected_srs_mappings = []  # Store detected mappings
+    deleted_sad_sections = set()
 
     if debug:
         print(f"Opening document: {file_path}")
@@ -47,6 +47,14 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                 inserted_srs = set()
                 deleted_srs = set()
 
+                # Capture deleted SAD sections
+                if deletions and sad_matches:
+                    for sad in sad_matches:
+                        deleted_sad_sections.add(sad)
+                        detected_srs_mappings.append(f"Deleted {sad}")
+                        if debug:
+                            print(f"Deleted SAD Section: {sad}")
+
                 # Process insertions recursively inside Covers section
                 for ins in insertions:
                     ins_text = "".join(
@@ -55,9 +63,8 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                     srs_matches = re.findall(r"SRS-\d+", ins_text)
                     for srs in srs_matches:
                         inserted_srs.add(srs)
-                        all_detected_srs.add(srs)
                         sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
-                        changes.append(f"{srs} mapped to {sad_to_map}")
+                        detected_srs_mappings.append(f"{srs} mapped to {sad_to_map}")
                         if debug:
                             print(f"Inserted in Covers: {srs} mapped to {sad_to_map}")
 
@@ -71,48 +78,32 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                     srs_matches = re.findall(r"SRS-\d+", del_text)
                     for srs in srs_matches:
                         deleted_srs.add(srs)
-                        all_detected_srs.add(srs)
                         sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
-                        changes.append(f"{srs} removed from {sad_to_map}")
+                        detected_srs_mappings.append(f"{srs} removed from {sad_to_map}")
                         if debug:
                             print(f"Deleted in Covers: {srs} removed from {sad_to_map}")
 
-                # Ensure all SRS IDs inside Covers are checked
+                # Ensure proper formatting of mappings, filtering only relevant changes
                 if "Covers:" in para_text:
                     all_srs_matches = re.findall(r"SRS-\d+", para_text)
                     for srs in all_srs_matches:
-                        previous_srs_set.add(srs)
                         sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
-                        if srs in inserted_srs:
-                            changes.append(f"{srs} mapped to {sad_to_map}")
-                            if debug:
-                                print(
-                                    f"Covers section (Inserted): {srs} mapped to {sad_to_map}"
+                        if srs in inserted_srs or srs in deleted_srs:
+                            (
+                                detected_srs_mappings.append(
+                                    f"{srs} mapped to {sad_to_map}"
                                 )
-                        elif srs in deleted_srs:
-                            changes.append(f"{srs} removed from {sad_to_map}")
-                            if debug:
-                                print(
-                                    f"Covers section (Deleted): {srs} removed from {sad_to_map}"
+                                if srs in inserted_srs
+                                else detected_srs_mappings.append(
+                                    f"{srs} removed from {sad_to_map}"
                                 )
-                        elif srs not in all_detected_srs:
-                            # If the SRS was not detected before, mark it as inserted manually
-                            all_detected_srs.add(srs)
-                            changes.append(f"{srs} mapped to {sad_to_map}")
+                            )
                             if debug:
                                 print(
-                                    f"Covers section (Manual Inserted Check): {srs} mapped to {sad_to_map}"
+                                    f"Covers section (Tracked Change): {srs} mapped to {sad_to_map}"
                                 )
 
-    # Final check to detect missing SRS manually
-    for srs in previous_srs_set:
-        if srs not in all_detected_srs:
-            sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
-            changes.append(f"{srs} mapped to {sad_to_map}")
-            if debug:
-                print(f"Manual Validation: {srs} mapped to {sad_to_map}")
-
-    return changes
+    return detected_srs_mappings
 
 
 def main():
@@ -120,8 +111,20 @@ def main():
     debug_mode = True  # Set to True for debugging output
     changes = extract_tracked_changes_from_docx(file_path, debug=debug_mode)
 
-    # Display the changes
+    # Display the changes, ensuring correct formatting
+    formatted_changes = []
+    last_sad = None
     for change in changes:
+        if "mapped to" in change or "removed from" in change:
+            sad_id = change.split(" ")[-1]
+            if last_sad != sad_id:
+                formatted_changes.append(
+                    ""
+                )  # Add a line break between different SAD sections
+            last_sad = sad_id
+        formatted_changes.append(change)
+
+    for change in formatted_changes:
         print(change)
 
 
