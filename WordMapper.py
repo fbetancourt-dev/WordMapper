@@ -1,13 +1,15 @@
 import zipfile
 from lxml import etree
 import re
+from collections import defaultdict
 
 
 def extract_tracked_changes_from_docx(file_path, debug=False):
     changes = []
     last_sad_id = None  # Store the most recent SAD ID found
-    detected_srs_mappings = []  # Store detected mappings
+    detected_srs_mappings = defaultdict(set)  # Store detected mappings grouped by SAD
     deleted_sad_sections = set()
+    existing_sad_sections = set()  # To track SAD IDs that still exist
     unique_changes = set()  # To avoid duplicates
 
     if debug:
@@ -37,6 +39,8 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                 # Check if the paragraph contains an SAD ID and update the last found SAD ID
                 sad_matches = re.findall(r"SAD-\d+", para_text)
                 if sad_matches:
+                    for sad in sad_matches:
+                        existing_sad_sections.add(sad)  # Track existing SADs
                     last_sad_id = sad_matches[-1]  # Always retain the last SAD ID found
                     if debug:
                         print(f"Updated last SAD ID: {last_sad_id}")
@@ -48,12 +52,15 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                 inserted_srs = set()
                 deleted_srs = set()
 
-                # Capture deleted SAD sections
+                # Capture deleted SAD sections **only if the SAD does NOT exist elsewhere**
                 if deletions and sad_matches:
                     for sad in sad_matches:
-                        if sad not in deleted_sad_sections:
+                        if (
+                            sad not in existing_sad_sections
+                            and sad not in deleted_sad_sections
+                        ):
                             deleted_sad_sections.add(sad)
-                            detected_srs_mappings.append(f"Deleted {sad}")
+                            changes.append(f"Deleted {sad}")
                             if debug:
                                 print(f"Deleted SAD Section: {sad}")
 
@@ -66,14 +73,9 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                     for srs in srs_matches:
                         inserted_srs.add(srs)
                         sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
-                        change_entry = f"{srs} mapped to {sad_to_map}"
-                        if change_entry not in unique_changes:
-                            unique_changes.add(change_entry)
-                            detected_srs_mappings.append(change_entry)
-                            if debug:
-                                print(
-                                    f"Inserted in Covers: {srs} mapped to {sad_to_map}"
-                                )
+                        detected_srs_mappings[sad_to_map].add(srs)
+                        if debug:
+                            print(f"Inserted in Covers: {srs} mapped to {sad_to_map}")
 
                 # Process deletions recursively inside Covers section, including nested <w:delText>
                 for dele in deletions:
@@ -86,16 +88,16 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                     for srs in srs_matches:
                         deleted_srs.add(srs)
                         sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
-                        change_entry = f"{srs} removed from {sad_to_map}"
-                        if change_entry not in unique_changes:
-                            unique_changes.add(change_entry)
-                            detected_srs_mappings.append(change_entry)
-                            if debug:
-                                print(
-                                    f"Deleted in Covers: {srs} removed from {sad_to_map}"
-                                )
+                        changes.append(f"{srs} removed from {sad_to_map}")
+                        if debug:
+                            print(f"Deleted in Covers: {srs} removed from {sad_to_map}")
 
-    return detected_srs_mappings
+    # Format grouped mappings for output
+    for sad_id, srs_set in detected_srs_mappings.items():
+        grouped_srs = ", ".join(sorted(srs_set))
+        changes.append(f"{grouped_srs} mapped to {sad_id}")
+
+    return changes
 
 
 def main():
