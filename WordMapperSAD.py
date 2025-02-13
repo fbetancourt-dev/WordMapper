@@ -109,14 +109,14 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                                         f"Deleted in Covers: {srs} removed from {sad_to_map}"
                                     )
 
-    # Format grouped mappings for output
+    # Format grouped mappings for output, ensuring all SRS are properly retained
     for sad_id, srs_set in detected_srs_mappings.items():
-        grouped_srs = ", ".join(sorted(srs_set))
+        grouped_srs = ", ".join(sorted(srs_set, key=lambda x: int(x.split("-")[1])))
         changes.append(f"{grouped_srs} mapped to {sad_id}")
 
-    # Format grouped removals for output
+    # Format grouped removals for output, ensuring all SRS are properly retained
     for sad_id, srs_set in detected_srs_removals.items():
-        grouped_srs = ", ".join(sorted(srs_set))
+        grouped_srs = ", ".join(sorted(srs_set, key=lambda x: int(x.split("-")[1])))
         changes.append(f"{grouped_srs} removed from {sad_id}")
 
     return changes
