@@ -6,6 +6,8 @@ import re
 def extract_tracked_changes_from_docx(file_path, debug=False):
     changes = []
     last_sad_id = None  # Store the most recent SAD ID found
+    all_detected_srs = set()
+    previous_srs_set = set()
 
     if debug:
         print(f"Opening document: {file_path}")
@@ -53,6 +55,7 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                     srs_matches = re.findall(r"SRS-\d+", ins_text)
                     for srs in srs_matches:
                         inserted_srs.add(srs)
+                        all_detected_srs.add(srs)
                         sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
                         changes.append(f"{srs} mapped to {sad_to_map}")
                         if debug:
@@ -68,15 +71,17 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                     srs_matches = re.findall(r"SRS-\d+", del_text)
                     for srs in srs_matches:
                         deleted_srs.add(srs)
+                        all_detected_srs.add(srs)
                         sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
                         changes.append(f"{srs} removed from {sad_to_map}")
                         if debug:
                             print(f"Deleted in Covers: {srs} removed from {sad_to_map}")
 
-                # Ensure nested changes inside Covers section are correctly extracted
+                # Ensure all SRS IDs inside Covers are checked
                 if "Covers:" in para_text:
                     all_srs_matches = re.findall(r"SRS-\d+", para_text)
                     for srs in all_srs_matches:
+                        previous_srs_set.add(srs)
                         sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
                         if srs in inserted_srs:
                             changes.append(f"{srs} mapped to {sad_to_map}")
@@ -90,14 +95,22 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                                 print(
                                     f"Covers section (Deleted): {srs} removed from {sad_to_map}"
                                 )
-                        else:
-                            changes.append(
-                                f"{srs} mapped to {sad_to_map}"
-                            )  # Catch missed insertions
+                        elif srs not in all_detected_srs:
+                            # If the SRS was not detected before, mark it as inserted manually
+                            all_detected_srs.add(srs)
+                            changes.append(f"{srs} mapped to {sad_to_map}")
                             if debug:
                                 print(
-                                    f"Covers section (Extra Inserted Check): {srs} mapped to {sad_to_map}"
+                                    f"Covers section (Manual Inserted Check): {srs} mapped to {sad_to_map}"
                                 )
+
+    # Final check to detect missing SRS manually
+    for srs in previous_srs_set:
+        if srs not in all_detected_srs:
+            sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
+            changes.append(f"{srs} mapped to {sad_to_map}")
+            if debug:
+                print(f"Manual Validation: {srs} mapped to {sad_to_map}")
 
     return changes
 
