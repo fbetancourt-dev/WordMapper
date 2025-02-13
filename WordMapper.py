@@ -8,6 +8,7 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
     last_sad_id = None  # Store the most recent SAD ID found
     detected_srs_mappings = []  # Store detected mappings
     deleted_sad_sections = set()
+    unique_changes = set()  # To avoid duplicates
 
     if debug:
         print(f"Opening document: {file_path}")
@@ -50,10 +51,11 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                 # Capture deleted SAD sections
                 if deletions and sad_matches:
                     for sad in sad_matches:
-                        deleted_sad_sections.add(sad)
-                        detected_srs_mappings.append(f"Deleted {sad}")
-                        if debug:
-                            print(f"Deleted SAD Section: {sad}")
+                        if sad not in deleted_sad_sections:
+                            deleted_sad_sections.add(sad)
+                            detected_srs_mappings.append(f"Deleted {sad}")
+                            if debug:
+                                print(f"Deleted SAD Section: {sad}")
 
                 # Process insertions recursively inside Covers section
                 for ins in insertions:
@@ -64,9 +66,14 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                     for srs in srs_matches:
                         inserted_srs.add(srs)
                         sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
-                        detected_srs_mappings.append(f"{srs} mapped to {sad_to_map}")
-                        if debug:
-                            print(f"Inserted in Covers: {srs} mapped to {sad_to_map}")
+                        change_entry = f"{srs} mapped to {sad_to_map}"
+                        if change_entry not in unique_changes:
+                            unique_changes.add(change_entry)
+                            detected_srs_mappings.append(change_entry)
+                            if debug:
+                                print(
+                                    f"Inserted in Covers: {srs} mapped to {sad_to_map}"
+                                )
 
                 # Process deletions recursively inside Covers section, including nested <w:delText>
                 for dele in deletions:
@@ -79,28 +86,13 @@ def extract_tracked_changes_from_docx(file_path, debug=False):
                     for srs in srs_matches:
                         deleted_srs.add(srs)
                         sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
-                        detected_srs_mappings.append(f"{srs} removed from {sad_to_map}")
-                        if debug:
-                            print(f"Deleted in Covers: {srs} removed from {sad_to_map}")
-
-                # Ensure proper formatting of mappings, filtering only relevant changes
-                if "Covers:" in para_text:
-                    all_srs_matches = re.findall(r"SRS-\d+", para_text)
-                    for srs in all_srs_matches:
-                        sad_to_map = last_sad_id if last_sad_id else "Unknown SAD"
-                        if srs in inserted_srs or srs in deleted_srs:
-                            (
-                                detected_srs_mappings.append(
-                                    f"{srs} mapped to {sad_to_map}"
-                                )
-                                if srs in inserted_srs
-                                else detected_srs_mappings.append(
-                                    f"{srs} removed from {sad_to_map}"
-                                )
-                            )
+                        change_entry = f"{srs} removed from {sad_to_map}"
+                        if change_entry not in unique_changes:
+                            unique_changes.add(change_entry)
+                            detected_srs_mappings.append(change_entry)
                             if debug:
                                 print(
-                                    f"Covers section (Tracked Change): {srs} mapped to {sad_to_map}"
+                                    f"Deleted in Covers: {srs} removed from {sad_to_map}"
                                 )
 
     return detected_srs_mappings
